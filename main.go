@@ -79,7 +79,13 @@ func buildPrompt() string {
 		os.Exit(1)
 	}
 	len := len(strings.Split(pwd, "/")) - 1
-	return string(strings.Split(pwd, "/")[len]) + " >"
+	var promptPath string
+	if len == 1 {
+		promptPath = "/"
+	} else {
+		promptPath = string(strings.Split(pwd, "/")[len])
+	}
+	return promptPath + " >"
 
 }
 func parseCmdString(s string) Result {
