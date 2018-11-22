@@ -145,6 +145,9 @@ func runCmd(o chan Result, c string, in string) {
 			o <- cmdResult
 			return
 		}
+		if command[1] == "~" {
+			command[1] = userHomeDir()
+		}
 		fi, err := os.Stat(command[1])
 		if err != nil {
 			cmdResult.Error = err
