@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
 
-	"github.com/c-bata/go-prompt"
 	"github.com/cosiner/argv"
+	"github.com/therealryanbonham/go-prompt" //Loading Custom version of go-prompt to allow custom ansi colors in prompt prefix
+
+	"github.com/go-playground/ansi"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -81,12 +84,28 @@ func buildPrompt() string {
 	len := len(strings.Split(pwd, "/")) - 1
 	var promptPath string
 	if len == 1 {
-		promptPath = "/"
+		promptPath = ansi.Cyan + "/" + ansi.White
 	} else {
-		promptPath = string(strings.Split(pwd, "/")[len])
+		promptPath = ansi.Cyan + string(strings.Split(pwd, "/")[len]) + ansi.White
 	}
+	suffix := addPromptSuffix()
+	if suffix != "" {
+		promptPath = promptPath + " " + suffix
+	}
+	fmt.Println(promptPath)
 	return promptPath + " >"
 
+}
+func addPromptSuffix() string {
+	var suffix string
+	//See if this is a git repo.
+	b, err := ioutil.ReadFile("./.git/HEAD") // just pass the file name
+	if err == nil {
+		head := strings.Split(strings.Trim(string(b), "\n"), "/")
+		branch := head[len(head)-1]
+		suffix = ansi.Blue + "git:(" + ansi.Red + branch + ansi.Blue + ")" + ansi.White
+	}
+	return suffix
 }
 func parseCmdString(s string) Result {
 	var cmdResult Result
@@ -111,19 +130,21 @@ func findSubCmdStrings(s string, in string) Result {
 	re := regexp.MustCompile("\\$\\([^)\\\\]*(?:\\\\.[^)\\\\]*)*\\)")
 	hasSub := re.FindStringIndex(s)
 	if hasSub != nil {
-		log.WithFields(log.Fields{"s": s}).Debug("Found Sub Cmd")
 		subs := re.FindAllString(s, -1)
 		for _, sub := range subs {
+			log.WithFields(log.Fields{"s": s, "sub": sub}).Debug("Found Sub Cmd")
 			// cmdResult := re.ReplaceAllStringFunc(s, parseCmdSubString)
-			if cmdResult.Error != nil {
+			cmdResult = parseCmdSubString(sub)
+			if cmdResult.Error == nil {
 				subReplace := cmdResult.Message
+				log.WithFields(log.Fields{"s": s, "sub": sub, "subReplace": subReplace}).Debug("Sub Cmd Result")
 				s = strings.Replace(s, sub, subReplace, 1)
 			} else {
 				return cmdResult
 			}
 		}
 	}
-	log.WithFields(log.Fields{"s": s}).Debug("Final Sub Cmd")
+	log.WithFields(log.Fields{"s": s}).Debug("Final Cmd")
 	return returnCmd(s, in)
 
 }

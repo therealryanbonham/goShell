@@ -2,12 +2,14 @@ package main
 
 import (
 	"testing"
+
+	"github.com/acarl005/stripansi"
 )
 
 func TestBuildPrompt(t *testing.T) {
-	prompt := buildPrompt()
-	if prompt != "goShell >" {
-		t.Errorf("Expected prompt of 'goShell >' got %s", prompt)
+	prompt := stripansi.Strip(buildPrompt())
+	if prompt != "goShell git:(master) >" {
+		t.Errorf("Expected prompt of 'goShell git:(master) >' got %s", prompt)
 	}
 }
 
@@ -49,43 +51,43 @@ func TestRunChangeDirToFile(t *testing.T) {
 	}
 }
 
-func TestreturnCmd(t *testing.T) {
+func TestReturnCmd(t *testing.T) {
 	result := returnCmd("echo cat", "")
 	if result.Message != "cat" {
 		t.Errorf("Expected Result 'cat' got %s", result.Message)
 	}
 }
 
-func TeststdIn(t *testing.T) {
+func TestStdIn(t *testing.T) {
 	result := returnCmd("cat", "dog")
 	if result.Message != "dog" {
 		t.Errorf("Expected Result 'dog' got %s", result.Message)
 	}
 }
 
-func TestparseCmdSubString(t *testing.T) {
-	result := parseCmdSubString("cat $(echo dog)")
+func TestParseCmdSubString(t *testing.T) {
+	result := parseCmdSubString("$(echo dog)")
 	if result.Message != "dog" {
 		t.Errorf("Expected Result 'dog' got %s", result.Message)
 	}
 }
-func TestfindSubCmdStrings(t *testing.T) {
-	result := findSubCmdStrings("cat $(echo dog)", "")
+func TestFindSubCmdStrings(t *testing.T) {
+	result := findSubCmdStrings("echo $(echo dog)", "")
 	if result.Message != "dog" {
 		t.Errorf("Expected Result 'dog' got %s", result.Message)
 	}
 }
 
-func TestparseCmdString(t *testing.T) {
+func TestParseCmdString(t *testing.T) {
 	result := parseCmdString("echo $(echo dog) and cat| cat")
 	if result.Message != "dog and cat" {
 		t.Errorf("Expected Result 'dog and cat' got %s", result.Message)
 	}
 }
 
-func TestparseCmdStringBadCommand(t *testing.T) {
+func TestParseCmdStringBadCommand(t *testing.T) {
 	result := parseCmdString("kfasjfasfjaspojf4")
-	if result.Error != nil {
-		t.Errorf("Expected Error Bad Commandt %s", result.Error.Error())
+	if result.Error == nil {
+		t.Errorf("Expected Error Bad Command %s", result.Error.Error())
 	}
 }
