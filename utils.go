@@ -4,29 +4,37 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"runtime"
+	"os/user"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 )
 
 func loadHistory(path string) []string {
-	history, err := readLines(path + "/.goShellHistory")
+	historyPath := path + "/.goShellHistory"
+	log.WithFields(log.Fields{"historyPath": historyPath}).Debug("Loading History")
+	history, err := readLines(historyPath)
 	if err != nil {
+		log.WithFields(log.Fields{"historyPath": historyPath}).Debug("Failed to Load History")
 		return []string{""}
 	}
+
 	return history
 }
 func saveHistory(path string, h []string, i int) {
+	historyPath := path + "/.goShellHistory"
 	if i < 0 {
 		log.Error("History Limit can not be negative.")
 	}
-	if len(h) > i {
-		start := len(h) - i
-		h = h[start:]
-	}
-	err := writeLines(h, path+"/.goShellHistory")
-	if err != nil {
-		log.Error(err.Error())
+	if len(h) > 0 {
+		if len(h) > i {
+			start := len(h) - i
+			h = h[start:]
+		}
+		err := writeLines(h, historyPath)
+		if err != nil {
+			log.Error(err.Error())
+		}
 	}
 
 }
@@ -63,18 +71,38 @@ func writeLines(lines []string, path string) error {
 	return w.Flush()
 }
 
-func userHomeDir() string {
-	if runtime.GOOS == "windows" {
-		home := os.Getenv("HOMEDRIVE") + os.Getenv("HOMEPATH")
-		if home == "" {
-			home = os.Getenv("USERPROFILE")
-		}
-		return home
-	} else if runtime.GOOS == "linux" {
-		home := os.Getenv("XDG_CONFIG_HOME")
-		if home != "" {
-			return home
-		}
+func userHomeDir() {
+	currentUser, err := user.Current()
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
 	}
-	return os.Getenv("HOME")
+	HomeDirs.current = currentUser.HomeDir
+	if HomeDirs.current != HomeDirs.last {
+		HomeDirs.last = HomeDirs.current
+		History = loadHistory(HomeDirs.current)
+	}
+}
+
+func buildTitleBar() string {
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
+	pwd, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
+	currentUser, err := user.Current()
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
+	userName := currentUser.Username
+	homeDir := currentUser.HomeDir
+	displayPath := strings.Replace(pwd, homeDir, "~", 1)
+	return userName + "@" + hostname + ": " + displayPath
 }

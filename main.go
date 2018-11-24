@@ -26,6 +26,12 @@ type Result struct {
 // History current command line history
 var History []string
 
+// HomeDirs contains current HomeDir and previous HomeDir if it has changed
+var HomeDirs struct {
+	current string
+	last    string
+}
+
 func completer(d prompt.Document) []prompt.Suggest {
 	s := []prompt.Suggest{
 		// {Text: "users", Description: "Store the username and age"},
@@ -46,14 +52,15 @@ func main() {
 			os.Exit(0)
 		}
 	}
-
 	//Shell Loop
 	func() {
 		for {
-			home := userHomeDir()
+			userHomeDir()
 			//reader := bufio.NewReader(os.Stdin)
 			input := prompt.Input(buildPrompt(), completer,
-				prompt.OptionHistory(loadHistory(home)))
+				prompt.OptionHistory(History),
+				prompt.OptionTitle(buildTitleBar()))
+
 			// fmt.Print(buildPrompt())
 			// input, _ := reader.ReadString('\n')
 			cmdreturn := parseCmdString(input)
@@ -61,8 +68,15 @@ func main() {
 				fmt.Println(cmdreturn.Error.Error())
 			} else {
 				fmt.Println(cmdreturn.Message)
-				History = append(History, input)
-				saveHistory(home, History, 1000)
+				// Do Not Save history if it is a repeat of last item.
+				lastItem := ""
+				if len(History) > 0 {
+					lastItem = History[len(History)-1]
+				}
+				if lastItem != input {
+					History = append(History, input)
+					saveHistory(HomeDirs.current, History, 1000)
+				}
 			}
 
 		}
@@ -92,7 +106,6 @@ func buildPrompt() string {
 	if suffix != "" {
 		promptPath = promptPath + " " + suffix
 	}
-	fmt.Println(promptPath)
 	return promptPath + " >"
 
 }
@@ -167,13 +180,13 @@ func runCmd(o chan Result, c string, in string) {
 	case "exit":
 		os.Exit(0)
 	case "cd":
-		if command[1] == "" {
+		if len(command) == 1 || command[1] == "" {
 			cmdResult.Error = errors.New("You must specify a path")
 			o <- cmdResult
 			return
 		}
 		if command[1] == "~" {
-			command[1] = userHomeDir()
+			command[1] = HomeDirs.current
 		}
 		fi, err := os.Stat(command[1])
 		if err != nil {

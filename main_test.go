@@ -51,6 +51,14 @@ func TestRunChangeDirToFile(t *testing.T) {
 	}
 }
 
+func TestRunChangeDirNoArg(t *testing.T) {
+	out := make(chan Result)
+	go runCmd(out, "cd", "")
+	result := <-out
+	if result.Error == nil {
+		t.Errorf("Expected an error no dir was passed")
+	}
+}
 func TestReturnCmd(t *testing.T) {
 	result := returnCmd("echo cat", "")
 	if result.Message != "cat" {
