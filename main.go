@@ -212,10 +212,17 @@ func runCmd(o chan Result, c string, in string) {
 	}
 	cmd := exec.Command(command[0], command[1:]...)
 	log.WithFields(log.Fields{"stdin": in}).Debug("Setting stdIn")
-	stdin := strings.NewReader(in)
-	cmd.Stdin = stdin
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	if command[0] == "sudo" && command[1] == "su" {
+		cmd.Stdout = os.Stdout
+		cmd.Stdin = os.Stdin
+		cmd.Stderr = os.Stderr
+	} else {
+		stdin := strings.NewReader(in)
+		cmd.Stdin = stdin
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+	}
+
 	log.WithFields(log.Fields{"cmd": cmd}).Debug("Cmd")
 	err := cmd.Run()
 	if err != nil {
