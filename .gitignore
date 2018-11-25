@@ -16,3 +16,4 @@
 
 #Ignore Compiles
 goShell
+application-build-*

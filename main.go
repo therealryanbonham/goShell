@@ -32,13 +32,35 @@ var HomeDirs struct {
 	last    string
 }
 
+// ExecInPath Will Hold all Exec in $path for completion
+var ExecInPath []prompt.Suggest
+
+// ExecInCurrentDir holds all executables in current dir
+var ExecInCurrentDir []prompt.Suggest
+
 func completer(d prompt.Document) []prompt.Suggest {
-	s := []prompt.Suggest{
-		// {Text: "users", Description: "Store the username and age"},
-		// {Text: "articles", Description: "Store the article text posted by user"},
-		// {Text: "comments", Description: "Store the text commented to articles"},
+	currentLine := d.CurrentLine()
+	words := strings.Split(currentLine, " ")
+	//log.WithFields(log.Fields{"d.CurrentLine()": d.CurrentLine(), "words": words}).Debug("Completer called")
+	log.WithFields(log.Fields{"d.CurrentLine()": d.CurrentLine(), "words": words, "execs": ExecInPath}).Debug("Completer called")
+
+	// s := []prompt.Suggest{
+	// 	// {Text: "users", Description: "Store the username and age"},
+	// 	// {Text: "articles", Description: "Store the article text posted by user"},
+	// 	// {Text: "comments", Description: "Store the text commented to articles"},
+	// }
+	if len(words) == 1 {
+		Execs := append(ExecInPath, ExecInCurrentDir...)
+		return prompt.FilterHasPrefix(Execs, d.GetWordBeforeCursor(), true)
 	}
-	return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
+	if len(words) == 2 {
+		if words[0] == "cd" {
+			//Tab complete path when using cd.
+			//return prompt.FilterHasPrefix(Execs, d.GetWordBeforeCursor(), true)
+		}
+	}
+	return []prompt.Suggest{}
+
 }
 
 func main() {
@@ -54,8 +76,11 @@ func main() {
 	}
 	//Shell Loop
 	func() {
+		ExecInPath = getExecutablesInPath()
+		ExecInCurrentDir = getExecutablesinCurrentDir()
 		for {
 			userHomeDir()
+
 			//reader := bufio.NewReader(os.Stdin)
 			input := prompt.Input(buildPrompt(), completer,
 				prompt.OptionHistory(History),
@@ -208,25 +233,26 @@ func runCmd(o chan Result, c string, in string) {
 			cmdResult.Message = ""
 			o <- cmdResult
 		}
+		ExecInCurrentDir = getExecutablesinCurrentDir()
 		return
 	}
 	cmd := exec.Command(command[0], command[1:]...)
-	log.WithFields(log.Fields{"stdin": in}).Debug("Setting stdIn")
 	if command[0] == "sudo" && command[1] == "su" {
 		cmd.Stdout = os.Stdout
 		cmd.Stdin = os.Stdin
 		cmd.Stderr = os.Stderr
 	} else {
+		log.WithFields(log.Fields{"stdin": in}).Debug("Setting stdIn")
 		stdin := strings.NewReader(in)
 		cmd.Stdin = stdin
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 	}
-
-	log.WithFields(log.Fields{"cmd": cmd}).Debug("Cmd")
 	err := cmd.Run()
+	log.WithFields(log.Fields{"cmd": cmd, "err": err, "stdout": cmd.Stdout, "stdin": cmd.Stdin, "stderr": cmd.Stderr}).Debug("Cmd")
 	if err != nil {
 		cmdResult.Error = err
+		cmdResult.Message = strings.Trim(string(stdout.Bytes()), "\n")
 		o <- cmdResult
 	} else {
 		cmdResult.Error = nil

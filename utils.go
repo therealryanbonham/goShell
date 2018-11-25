@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
+	prompt "github.com/therealryanbonham/go-prompt"
 )
 
 func loadHistory(path string) []string {
@@ -105,4 +106,51 @@ func buildTitleBar() string {
 	homeDir := currentUser.HomeDir
 	displayPath := strings.Replace(pwd, homeDir, "~", 1)
 	return userName + "@" + hostname + ": " + displayPath
+}
+func getExecutablesinCurrentDir() []prompt.Suggest {
+	paths := []string{"."}
+	return getExecutables(paths)
+}
+func getExecutablesInPath() []prompt.Suggest {
+	result := parseCmdString("echo $PATH | tr ':' '\n'")
+	if result.Error != nil {
+		log.Error("Failed to load paths")
+	}
+	paths := strings.Split(result.Message, "\n")
+	return getExecutables(paths)
+}
+func getExecutables(paths []string) []prompt.Suggest {
+	var execs []prompt.Suggest
+
+	out := make(chan Result)
+	for _, path := range paths {
+		go runCmd(out, `find `+path+` -type f -print0 -exec test -x {} ;`, "")
+	}
+	for range paths {
+		findResults := <-out
+		log.WithFields(log.Fields{"findResults": findResults}).Debug("Exec Find Results")
+		foundExecs := strings.Split(findResults.Message, "\x00")
+		for _, f := range foundExecs {
+			if f != "" {
+				fs := strings.Split(f, "/")
+				//log.WithFields(log.Fields{"f": f, "fs": fs, "execs": execs}).Debug("Adding Exec")
+				var exec prompt.Suggest
+				exec.Text = fs[len(fs)-1]
+				exec.Description = f
+				execs = append(execs, exec)
+			}
+		}
+	}
+	return execs
+
+	// cmdreturn := <-out
+	// o := make("find %s" -type f -exec test -x '{}' \;", 0)
+	// return paths
+	// return returnCmd(`echo "$PATH" | tr ':' '\n' | while IFS= read path; do
+	//     find "$path/net*" -type f -exec test -x '{}' \;
+	// done \
+	// | while read -d $'\0' path; do
+	//     echo "${path##*/}"
+	// done 	\
+	// | sort -u`, "")
 }
