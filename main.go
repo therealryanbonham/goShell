@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/cosiner/argv"
@@ -39,27 +40,44 @@ var ExecInPath []prompt.Suggest
 var ExecInCurrentDir []prompt.Suggest
 
 func completer(d prompt.Document) []prompt.Suggest {
+	s := []prompt.Suggest{}
+	BuiltInCommands := []prompt.Suggest{
+		{Text: "cd", Description: "cd"},
+		{Text: "exit", Description: "exit"},
+	}
+
 	currentLine := d.CurrentLine()
 	words := strings.Split(currentLine, " ")
 	//log.WithFields(log.Fields{"d.CurrentLine()": d.CurrentLine(), "words": words}).Debug("Completer called")
 	log.WithFields(log.Fields{"d.CurrentLine()": d.CurrentLine(), "words": words, "execs": ExecInPath}).Debug("Completer called")
 
-	// s := []prompt.Suggest{
-	// 	// {Text: "users", Description: "Store the username and age"},
-	// 	// {Text: "articles", Description: "Store the article text posted by user"},
-	// 	// {Text: "comments", Description: "Store the text commented to articles"},
-	// }
 	if len(words) == 1 {
 		Execs := append(ExecInPath, ExecInCurrentDir...)
-		return prompt.FilterHasPrefix(Execs, d.GetWordBeforeCursor(), true)
+		Execs = append(Execs, BuiltInCommands...)
+		//Execs = append(Execs, suggestCDirectory(words[0], true)...)
+		s = prompt.FilterHasPrefix(Execs, d.GetWordBeforeCursor(), true)
 	}
 	if len(words) == 2 {
 		if words[0] == "cd" {
+			//split := strings.Split(words[1], "/")
+			//find := split[len(split)-1]
+			options := suggestCDirectory(words[1], false)
+			s = prompt.FilterHasPrefix(options, words[1], true)
 			//Tab complete path when using cd.
 			//return prompt.FilterHasPrefix(Execs, d.GetWordBeforeCursor(), true)
 		}
 	}
-	return []prompt.Suggest{}
+	//Sort Results
+	sort.Slice(s, func(i, j int) bool {
+		if s[i].Text < s[j].Text {
+			return true
+		}
+		if s[i].Text > s[j].Text {
+			return false
+		}
+		return s[i].Description < s[j].Description
+	})
+	return s
 
 }
 
@@ -85,22 +103,24 @@ func main() {
 			input := prompt.Input(buildPrompt(), completer,
 				prompt.OptionHistory(History),
 				prompt.OptionTitle(buildTitleBar()))
-
-			// fmt.Print(buildPrompt())
-			// input, _ := reader.ReadString('\n')
-			cmdreturn := parseCmdString(input)
-			if cmdreturn.Error != nil {
-				fmt.Println(cmdreturn.Error.Error())
-			} else {
-				fmt.Println(cmdreturn.Message)
-				// Do Not Save history if it is a repeat of last item.
-				lastItem := ""
-				if len(History) > 0 {
-					lastItem = History[len(History)-1]
-				}
-				if lastItem != input {
-					History = append(History, input)
-					saveHistory(HomeDirs.current, History, 1000)
+			if input != "" {
+				// fmt.Print(buildPrompt())
+				// input, _ := reader.ReadString('\n')
+				cmdreturn := parseCmdString(input)
+				if cmdreturn.Error != nil {
+					fmt.Println(cmdreturn.Error.Error())
+					fmt.Println(cmdreturn.Message)
+				} else {
+					fmt.Println(cmdreturn.Message)
+					// Do Not Save history if it is a repeat of last item.
+					lastItem := ""
+					if len(History) > 0 {
+						lastItem = History[len(History)-1]
+					}
+					if lastItem != input {
+						History = append(History, input)
+						saveHistory(HomeDirs.current, History, 1000)
+					}
 				}
 			}
 
@@ -148,15 +168,23 @@ func addPromptSuffix() string {
 func parseCmdString(s string) Result {
 	var cmdResult Result
 	args, err := argv.Argv([]rune(s), argv.ParseEnv(os.Environ()), argv.Run)
+	//fmt.Printf("%#v", args)
 	if err != nil {
 		cmdResult.Error = err
 		return cmdResult
 	}
 
 	log.WithFields(log.Fields{"args": args}).Debug("parseCmdString Args")
-	log.WithFields(log.Fields{"s": s}).Debug("Calling Find Sub Cmd")
 	for _, cmd := range args {
-		cmdResult = findSubCmdStrings(strings.Join(cmd, " "), cmdResult.Message)
+		var cString string
+		for i, c := range cmd {
+			c = strings.Replace(c, "\n", "\\\\n", -1)
+			cmd[i] = strings.Replace(c, " ", "\\ ", -1)
+		}
+		cString = strings.Join(cmd, " ")
+		log.WithFields(log.Fields{"cString": cString}).Debug("Calling Find Sub Cmd")
+
+		cmdResult = findSubCmdStrings(cString, cmdResult.Message)
 		if cmdResult.Error != nil {
 			return cmdResult
 		}
@@ -200,7 +228,10 @@ func returnCmd(c string, in string) Result {
 func runCmd(o chan Result, c string, in string) {
 	var stdout, stderr bytes.Buffer
 	var cmdResult Result
-	command := strings.Split(c, " ")
+	args, err := argv.Argv([]rune(c), argv.ParseEnv(os.Environ()), argv.Run)
+	command := args[0]
+	//command := strings.Split(c, " ")
+	//fmt.Println(args)
 	switch command[0] {
 	case "exit":
 		os.Exit(0)
@@ -248,11 +279,19 @@ func runCmd(o chan Result, c string, in string) {
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 	}
-	err := cmd.Run()
+	err = cmd.Run()
 	log.WithFields(log.Fields{"cmd": cmd, "err": err, "stdout": cmd.Stdout, "stdin": cmd.Stdin, "stderr": cmd.Stderr}).Debug("Cmd")
 	if err != nil {
 		cmdResult.Error = err
-		cmdResult.Message = strings.Trim(string(stdout.Bytes()), "\n")
+		se := strings.Trim(string(stderr.Bytes()), "\n")
+		so := strings.Trim(string(stdout.Bytes()), "\n")
+		if so != "" {
+			cmdResult.Message = strings.Trim(string(stdout.Bytes()), "\n")
+		}
+		if se != "" {
+			cmdResult.Message = cmdResult.Message + strings.Trim(string(stderr.Bytes()), "\n")
+		}
+
 		o <- cmdResult
 	} else {
 		cmdResult.Error = nil

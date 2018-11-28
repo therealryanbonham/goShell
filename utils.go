@@ -124,7 +124,7 @@ func getExecutables(paths []string) []prompt.Suggest {
 
 	out := make(chan Result)
 	for _, path := range paths {
-		go runCmd(out, `find `+path+` -type f -print0 -exec test -x {} ;`, "")
+		go runCmd(out, `find "`+path+`" -type f -maxdepth 1 -print0 -exec test -x {} ;`, "")
 	}
 	for range paths {
 		findResults := <-out
@@ -134,23 +134,71 @@ func getExecutables(paths []string) []prompt.Suggest {
 			if f != "" {
 				fs := strings.Split(f, "/")
 				//log.WithFields(log.Fields{"f": f, "fs": fs, "execs": execs}).Debug("Adding Exec")
-				var exec prompt.Suggest
-				exec.Text = fs[len(fs)-1]
-				exec.Description = f
-				execs = append(execs, exec)
+				cmd := fs[len(fs)-1]
+				if cmd != "cd" {
+					var exec prompt.Suggest
+					exec.Text = strings.Replace(cmd, " ", "\\ ", -1)
+					exec.Description = f
+					execs = append(execs, exec)
+				}
 			}
 		}
 	}
 	return execs
+}
 
-	// cmdreturn := <-out
-	// o := make("find %s" -type f -exec test -x '{}' \;", 0)
-	// return paths
-	// return returnCmd(`echo "$PATH" | tr ':' '\n' | while IFS= read path; do
-	//     find "$path/net*" -type f -exec test -x '{}' \;
-	// done \
-	// | while read -d $'\0' path; do
-	//     echo "${path##*/}"
-	// done 	\
-	// | sort -u`, "")
+func getDirectories(paths []string) []prompt.Suggest {
+	var execs []prompt.Suggest
+
+	out := make(chan Result)
+	for _, path := range paths {
+		go runCmd(out, `find "`+path+`" -type d -maxdepth 1 -print0`, "")
+	}
+	for range paths {
+		findResults := <-out
+		if findResults.Error == nil {
+			log.WithFields(log.Fields{"findResults": findResults}).Debug("Dir Find Results")
+			foundExecs := strings.Split(findResults.Message, "\x00")
+			for _, f := range foundExecs {
+				if f != "" {
+					//fs := strings.Split(f, "/")
+					//log.WithFields(log.Fields{"f": f, "fs": fs, "execs": execs}).Debug("Adding Exec")
+					var exec prompt.Suggest
+					exec.Text = strings.Replace(f, " ", "\\ ", -1)
+					exec.Description = f
+					execs = append(execs, exec)
+				}
+			}
+		}
+
+	}
+	return execs
+}
+
+func suggestCDirectory(i string, withExecs bool) []prompt.Suggest {
+
+	lastSlash := strings.LastIndex(i, "/")
+
+	searchPath := i
+	log.WithFields(log.Fields{"i": i, "lastSlash": lastSlash}).Debug("suggestChangeDirectory")
+	if lastSlash == -1 {
+		searchPath = "."
+	} else if lastSlash != len(i)-1 {
+		split := strings.Split(i, "/")
+		searchPath = strings.Join(split[:len(split)-1], "/")
+		log.WithFields(log.Fields{"split": split, "searchPath": searchPath}).Debug("Search Path")
+		if searchPath == "" {
+			searchPath = "/"
+		}
+	}
+	paths := []string{searchPath}
+	items := getDirectories(paths)
+	if withExecs {
+		execs := getExecutables(paths)
+		items = append(items, execs...)
+
+	}
+	log.WithFields(log.Fields{"i": i, "searchPath": searchPath, "items": items}).Debug("Found Path")
+	return items
+
 }
